@@ -1,0 +1,58 @@
+cmake_minimum_required(VERSION 3.20)
+include("${CMAKE_CURRENT_LIST_DIR}/source_files.cmake")
+if(NOT STUDIO_PACKAGE_TEST_OUTPUT)
+  message(FATAL_ERROR "Set STUDIO_PACKAGE_TEST_OUTPUT to a scratch directory.")
+endif()
+get_filename_component(STUDIO_PACKAGE_TEST_OUTPUT "${STUDIO_PACKAGE_TEST_OUTPUT}" ABSOLUTE)
+string(RANDOM LENGTH 12 run_id)
+set(scratch "${STUDIO_PACKAGE_TEST_OUTPUT}/${run_id}")
+set(exported "${scratch}/source with spaces")
+execute_process(COMMAND "${CMAKE_COMMAND}" "-DSTUDIO_SOURCE_OUTPUT=${exported}"
+  -DSTUDIO_SOURCE_ZIP=ON -P "${CMAKE_CURRENT_LIST_DIR}/package_source.cmake"
+  RESULT_VARIABLE result)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "Source export failed: ${result}")
+endif()
+
+# The archive must work in another location, including being re-exported there.
+file(ARCHIVE_EXTRACT INPUT "${exported}.zip" DESTINATION "${scratch}/relocated")
+set(relocated "${scratch}/relocated/source with spaces")
+set(repacked "${scratch}/repacked")
+execute_process(COMMAND "${CMAKE_COMMAND}" "-DSTUDIO_SOURCE_OUTPUT=${repacked}"
+  -P "${relocated}/package_source.cmake" RESULT_VARIABLE result)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "Re-exporting the relocated distribution failed: ${result}")
+endif()
+set(expected ${STUDIO_LOCAL_FILES} ${STUDIO_SHARED_FILES} src/deps/misc/KHR/khrplatform.h)
+list(SORT expected)
+file(GLOB_RECURSE actual LIST_DIRECTORIES false RELATIVE "${repacked}" "${repacked}/*")
+list(SORT actual)
+if(NOT "${actual}" STREQUAL "${expected}")
+  message(FATAL_ERROR "Source package contents differ from the manifest.")
+endif()
+foreach(path IN LISTS expected)
+  file(SHA256 "${exported}/${path}" original_hash)
+  file(SHA256 "${repacked}/${path}" repacked_hash)
+  if(NOT original_hash STREQUAL repacked_hash)
+    message(FATAL_ERROR "Source changed during archive/relocation/re-export: ${path}")
+  endif()
+endforeach()
+
+# Protect both a previously exported tree and a pre-existing sibling archive.
+file(WRITE "${exported}/user-file.txt" "keep me")
+file(WRITE "${scratch}/occupied.zip" "keep me")
+foreach(output IN ITEMS "${exported}" "${scratch}/occupied")
+  execute_process(COMMAND "${CMAKE_COMMAND}" "-DSTUDIO_SOURCE_OUTPUT=${output}"
+    -DSTUDIO_SOURCE_ZIP=ON -P "${CMAKE_CURRENT_LIST_DIR}/package_source.cmake"
+    RESULT_VARIABLE result OUTPUT_QUIET ERROR_VARIABLE error)
+  if(result EQUAL 0 OR NOT error MATCHES "Refusing to overwrite")
+    message(FATAL_ERROR "Existing output was not refused: ${output}")
+  endif()
+endforeach()
+file(READ "${exported}/user-file.txt" preserved_file)
+file(READ "${scratch}/occupied.zip" preserved_archive)
+if(NOT preserved_file STREQUAL "keep me" OR NOT preserved_archive STREQUAL "keep me"
+    OR EXISTS "${scratch}/occupied")
+  message(FATAL_ERROR "Refused export modified existing output or created partial output.")
+endif()
+message(STATUS "Source packaging, archive relocation, re-export, and overwrite protection passed.")
