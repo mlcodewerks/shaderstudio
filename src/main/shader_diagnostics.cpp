@@ -22,6 +22,9 @@ namespace
     };
     using source_maps = std::map<path, source_map>;
 
+    // Match librashader 0.12's include/stage preprocessing and its emitted #line
+    // directives. In particular, pragma/include resets are not physical line
+    // numbers. See librashader-preprocess/src/{include,stage}.rs at v0.12.0.
     void map_source(const path &file, source_maps &maps, bool root, std::set<path> &active)
     {
         std::error_code ec;
@@ -48,7 +51,7 @@ namespace
         while (begin < lines.size() && lines[begin].find_first_not_of(" \t") == line.npos)
             ++begin;
         if (root)
-            ++begin;
+            ++begin; // The trimmed #version line is emitted separately.
         size_t logical = root ? 2 : 1;
         for (size_t i = begin; i < lines.size(); ++i)
         {
@@ -68,6 +71,7 @@ namespace
             }
             else if (s.rfind("#line ", 0) == 0)
             {
+                // Custom source maps may name virtual files; do not guess locations.
                 break;
             }
             else
@@ -81,6 +85,9 @@ namespace
         }
         active.erase(key);
     }
+
+    // Rust's Debug formatting embeds a quoted compiler log in the C API message.
+    // Unescape only that string, never raw Windows paths in an ordinary diagnostic.
     std::string compiler_log(const std::string &error)
     {
         auto start = error.find("log: \"");
@@ -168,6 +175,8 @@ void shader_read_diagnostics(shader_diagnostic_report &report, const std::string
                 if (named.is_absolute() ? file.lexically_normal() == named.lexically_normal() : file.filename() == named.filename())
                     matches.push_back(file);
             }
+            // A basename shared by multiple passes is ambiguous, as are numeric
+            // source IDs in generated driver GLSL. Keep those in the full log.
             if (matches.size() == 1)
             {
                 const auto &source = maps.at(matches[0]);

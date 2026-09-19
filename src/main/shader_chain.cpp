@@ -212,11 +212,8 @@ bool shader_import(const std::filesystem::path &path, shader_chain_config &resul
             auto n = count(values.at("shaders"), 64);
             values.erase("shaders");
             next.passes.resize(n);
-            char *regex_s  = "^(shader|filter_linear|wrap_mode|frame_count_mod|srgb_framebuffer|"\
-            "float_framebuffer | mipmap_input | alias | scale_type | scale_type_x | scale_type_y |"\
-            " scale | scale_x | scale_y)([0 - 9] +) $ ;";
-            static const std::regex pass_key(regex_s);
-                for (auto it = values.begin(); it != values.end();)
+            static const std::regex pass_key("^(shader|filter_linear|wrap_mode|frame_count_mod|srgb_framebuffer|float_framebuffer|mipmap_input|alias|scale_type|scale_type_x|scale_type_y|scale|scale_x|scale_y)([0-9]+)$");
+            for (auto it = values.begin(); it != values.end();)
             {
                 std::smatch m;
                 if (std::regex_match(it->first, m, pass_key))
@@ -481,6 +478,7 @@ try
     auto &api = librashader();
     if (!api.gl_available && !api.vk_available)
         return false;
+    // SDL gives each process its own temporary filename, outside shader source directories.
     auto temporary = shader_temporary_preset();
     auto all = chain;
     for (auto &pass : all.passes)

@@ -49,6 +49,8 @@ try
                                                                           { return p.enabled; }); });
     if (vulkan && has_passes)
     {
+        // The C API accepts a VkImage, not the core's VkImageView. Apply its RGB
+        // swizzle and force opaque alpha before the user's Original/History input.
         auto component = [](VkComponentSwizzle swizzle, const char *identity) -> std::string
         {
             switch (swizzle)
@@ -182,8 +184,7 @@ void shader_runtime::update_parameters()
             auto found = values.find(parameter.first);
             if (found == values.end() || found->second == parameter.second || !std::isfinite(found->second))
                 continue;
-            auto error = chain->vulkan ? api.vk_filter_chain_set_param(&chain->vk, parameter.first.c_str(), found->second) 
-            : api.gl_filter_chain_set_param(&chain->gl, parameter.first.c_str(), found->second);
+            auto error = chain->vulkan ? api.vk_filter_chain_set_param(&chain->vk, parameter.first.c_str(), found->second) : api.gl_filter_chain_set_param(&chain->gl, parameter.first.c_str(), found->second);
             if (api.check(error, control.error))
                 parameter.second = found->second;
         }

@@ -9,6 +9,7 @@ namespace
     ImFont *editor_font = nullptr;
     std::string editor_text(const TextEditor &editor)
     {
+        // GetText() appends a final newline, even when the document has none.
         return editor.GetSectionText({}, {editor.GetLineCount(), 0});
     }
 }
@@ -194,9 +195,7 @@ bool shader_source_editor::draw(const std::string &compile_error, const shader_d
     // Closing the window hides it; documents remain available from Edit source.
     if (ImGui::Begin("Shader source", &visible))
     {
-        ImGui::TextWrapped(
-            "Save writes the source file used by every pass referencing it and reloads the shader stack." \ 
-            "Failed compilation keeps the previous working shaders.");
+        ImGui::TextWrapped("Save writes the source file used by every pass referencing it and reloads the shader stack. Failed compilation keeps the previous working shaders.");
         if (!open_error.empty())
             ImGui::TextWrapped("%s", open_error.c_str());
         if (!compile_error.empty())
@@ -242,8 +241,7 @@ bool shader_source_editor::draw(const std::string &compile_error, const shader_d
             }
         }
         std::filesystem::path remove;
-        if (ImGui::BeginTabBar("Shader documents", ImGuiTabBarFlags_Reorderable | 
-            ImGuiTabBarFlags_AutoSelectNewTabs | ImGuiTabBarFlags_TabListPopupButton))
+        if (ImGui::BeginTabBar("Shader documents", ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_AutoSelectNewTabs | ImGuiTabBarFlags_TabListPopupButton))
         {
             // Reset the visible tabs immediately when switching entry or preset.
             for (const auto &path : tabs_to_close)

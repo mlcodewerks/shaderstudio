@@ -11,15 +11,12 @@ namespace
     {
         GLint program, vao, array, uniform, read, draw, active, viewport[4], scissor[4], polygon[2];
         GLboolean color[4];
-        const GLenum flags[14] = {GL_BLEND, GL_DEPTH_TEST, GL_CULL_FACE, GL_SCISSOR_TEST, GL_STENCIL_TEST, 
-            GL_FRAMEBUFFER_SRGB, GL_RASTERIZER_DISCARD,GL_SAMPLE_ALPHA_TO_COVERAGE, GL_SAMPLE_COVERAGE,
-            GL_SAMPLE_MASK, GL_PRIMITIVE_RESTART, GL_COLOR_LOGIC_OP, GL_DITHER, GL_PRIMITIVE_RESTART_FIXED_INDEX};
+        const GLenum flags[14] = {GL_BLEND, GL_DEPTH_TEST, GL_CULL_FACE, GL_SCISSOR_TEST, GL_STENCIL_TEST, GL_FRAMEBUFFER_SRGB, GL_RASTERIZER_DISCARD,
+                                  GL_SAMPLE_ALPHA_TO_COVERAGE, GL_SAMPLE_COVERAGE, GL_SAMPLE_MASK, GL_PRIMITIVE_RESTART, GL_COLOR_LOGIC_OP, GL_DITHER, GL_PRIMITIVE_RESTART_FIXED_INDEX};
         GLboolean enabled[14];
         GLint unpack_buffer, unpack[6], blend[6];
-        const GLenum unpack_keys[6] = {GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH, GL_UNPACK_IMAGE_HEIGHT, GL_UNPACK_SKIP_PIXELS,
-             GL_UNPACK_SKIP_ROWS, GL_UNPACK_SKIP_IMAGES};
-        const GLenum blend_keys[6] = {GL_BLEND_SRC_RGB, GL_BLEND_DST_RGB, GL_BLEND_SRC_ALPHA, GL_BLEND_DST_ALPHA,
-             GL_BLEND_EQUATION_RGB, GL_BLEND_EQUATION_ALPHA};
+        const GLenum unpack_keys[6] = {GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH, GL_UNPACK_IMAGE_HEIGHT, GL_UNPACK_SKIP_PIXELS, GL_UNPACK_SKIP_ROWS, GL_UNPACK_SKIP_IMAGES};
+        const GLenum blend_keys[6] = {GL_BLEND_SRC_RGB, GL_BLEND_DST_RGB, GL_BLEND_SRC_ALPHA, GL_BLEND_DST_ALPHA, GL_BLEND_EQUATION_RGB, GL_BLEND_EQUATION_ALPHA};
         std::vector<std::array<GLint, 2>> textures;
         struct binding
         {
@@ -141,6 +138,7 @@ namespace
             return glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
         }
     };
+    // Explicit teardown while a context is current; no GL calls during static destruction.
     shader_runtime runtime;
     target input;
     std::vector<target> outputs;
