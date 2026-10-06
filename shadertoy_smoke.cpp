@@ -1,5 +1,9 @@
 #include "project.h"
+#include "preview.h"
 #include "shadertoy_runtime.h"
+#include "shader_source_editor.h"
+#include "imgui_impl_opengl3.h"
+#include "imgui_impl_sdl3.h"
 #include "glad.h"
 #include <SDL3/SDL.h>
 #include <cmath>
@@ -60,6 +64,34 @@ void shadertoy_smoke(const std::filesystem::path &root)
     compile();
     auto rgba = pixel(runtime.render(64, 32, 1.f / 60));
     require(rgba[0] > 0.5, "Shadertoy starter rendered black");
+    {
+        shader_source_editor editor;
+        require(editor.open(p.passes[5].source, error), error);
+        auto frame = [&] {
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL3_NewFrame();
+            ImGui::NewFrame();
+            editor.draw(runtime.error, runtime.diagnostics);
+            ImGui::Render();
+        };
+        for (int i = 0; i < 4; ++i) frame();
+        auto &io = ImGui::GetIO();
+        io.AddKeyEvent(ImGuiMod_Ctrl, true);
+        io.AddKeyEvent(ImGuiKey_A, true);
+        frame();
+        io.AddKeyEvent(ImGuiKey_A, false);
+        io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        frame();
+        const std::string edited = "void mainImage(out vec4 c,in vec2 p) { c=vec4(0.375,0,0,1); }";
+        io.AddInputCharactersUTF8(edited.c_str());
+        for (int i = 0; i < 4; ++i) frame();
+        require(editor.save_all(error), error);
+        std::ifstream saved(p.passes[5].source);
+        const std::string saved_text((std::istreambuf_iterator<char>(saved)), {});
+        require(saved_text == edited, "Standalone editor changed shader text during input/save");
+        compile();
+        near(pixel(runtime.render(64, 32, 0))[0], 0.375f, "Standalone editor recompile");
+    }
     write(5, R"(void mainImage(out vec4 c,in vec2 p) {
         c=vec4(iResolution.xy,iTime,float(iFrame));
     })");
@@ -212,13 +244,13 @@ void shadertoy_smoke(const std::filesystem::path &root)
         channel.fps = 30;
         compile();
         rgba = pixel(runtime.render(64, 32, 1.f / 30));
-        require(rgba[0] > 0.8 && rgba[1] < 0.1, "FFmpeg video first frame did not decode");
+        require(rgba[0] > 0.8 && rgba[1] < 0.1, "libretro-common video first frame did not decode");
         for (int i = 0; i < 20; ++i)
         {
             SDL_Delay(10);
             rgba = pixel(runtime.render(64, 32, 1.f / 30));
         }
-        require(rgba[1] > 0.8 && rgba[0] < 0.1, "FFmpeg video did not advance to the next frame");
+        require(rgba[1] > 0.8 && rgba[0] < 0.1, "libretro-common video did not advance to the next frame");
         runtime.reset();
         rgba = pixel(runtime.render(64, 32, 0));
         for (int i = 0; i < 100 && rgba[0] < 0.8; ++i)
@@ -226,7 +258,7 @@ void shadertoy_smoke(const std::filesystem::path &root)
             SDL_Delay(10);
             rgba = pixel(runtime.render(64, 32, 0));
         }
-        require(rgba[0] > 0.8, "FFmpeg video did not restart");
+        require(rgba[0] > 0.8, "libretro-common video did not restart");
     }
     auto wav = directory / "audio.wav";
     {
@@ -261,6 +293,32 @@ void shadertoy_smoke(const std::filesystem::path &root)
     near(rgba[2], 2, "audio texture height");
     near(rgba[3], 0.1f, "audio channel time");
     require(runtime.media_status.empty(), runtime.media_status);
+    if (const char *media = std::getenv("STUDIO_TEST_MEDIA_DIR"))
+    {
+        const auto fixtures = std::filesystem::u8path(media);
+        for (const char *name : {"tone.flac", "tone.mp3", "tone.ogg", "tone.opus", "tone.m4a", "tone.aac", "tone.ac3"})
+        {
+            channel.file = fixtures / name;
+            compile();
+            runtime.render(64, 32, 0.1f);
+            rgba = pixel(runtime.render(64, 32, 0.1f));
+            near(rgba[1], 512, "compressed audio texture width");
+            near(rgba[2], 2, "compressed audio texture height");
+            require(runtime.media_status.empty(), runtime.media_status);
+        }
+        studio_preview preview;
+        require(preview.load_video(fixtures / "colors.mp4", error), error);
+        require(pixel(preview.input_fbo)[0] > 0.8, "Preset video first frame");
+        const auto texture = preview.input_texture;
+        require(preview.advance_video(0.6, error), error);
+        require(pixel(preview.input_fbo)[1] > 0.8 && preview.input_texture == texture, "Preset video advance/reused texture");
+        require(preview.advance_video(0.5, error), error);
+        require(pixel(preview.input_fbo)[0] > 0.8, "Preset video loop");
+        require(!preview.load_video(fixtures / "missing.mp4", error) && preview.input_texture == texture, "Failed video load lost preview");
+        preview.test_card();
+        require(preview.advance_video(1, error) && preview.width == 640, "Test card did not stop video");
+        std::puts("PASS: compressed audio samplers and looping preset video textures");
+    }
     channel = {};
     p.vr = true;
     write(5, "void mainVR(out vec4 c,in vec2 p,in vec3 ro,in vec3 rd) { c=vec4(abs(rd),1); }");

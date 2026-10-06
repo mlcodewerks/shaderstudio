@@ -105,9 +105,13 @@ namespace
         if (type == toy_input_kind::texture)
             return extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".bmp" || extension == ".tga";
         if (type == toy_input_kind::audio)
-            return extension == ".wav";
+            return extension == ".wav" || extension == ".flac" || extension == ".ogg" ||
+                   extension == ".oga" || extension == ".mp3" || extension == ".opus" ||
+                   extension == ".aac" || extension == ".m4a" || extension == ".weba" ||
+                   extension == ".mka" || extension == ".mod" || extension == ".s3m" ||
+                   extension == ".xm" || extension == ".ac3" || extension == ".eac3" || extension == ".ec3";
         if (type == toy_input_kind::video)
-            return extension == ".mp4" || extension == ".webm" || extension == ".mkv" || extension == ".mov" || extension == ".avi" || extension == ".gif";
+            return extension == ".mp4" || extension == ".webm" || extension == ".mkv" || extension == ".mov" || extension == ".m4v";
         return false; // Website cubemaps/volumes require conversion to Studio's atlases.
     }
 }

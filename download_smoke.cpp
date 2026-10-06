@@ -125,8 +125,8 @@ try
     "Real libcurl transport ignored cancellation");
     cancel = false;
     require(!studio_curl_fetch({"http://www.shadertoy.com/", {}}, response, cancel, error), "Real transport accepted insecure HTTP");
-    std::puts("PASS: URL parsing, requests/API escaping, downloaded assets/deduplication, local-path isolation,
-         save/reopen, failure retention and cancellation");
+    std::puts("PASS: URL parsing, requests/API escaping, downloaded assets/deduplication, local-path isolation, "
+              "save/reopen, failure retention and cancellation");
     return 0;
 }
 catch (const std::exception &e)

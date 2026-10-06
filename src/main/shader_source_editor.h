@@ -23,7 +23,8 @@ public:
     bool is_visible() const { return visible; }
     bool save_all(std::string &error);
     // An optional positive size lets an embedding tool resize the editor with its workspace.
-    bool draw(const std::string &compile_error, const shader_diagnostic_report & = {}, ImVec2 size = {}); // True after a successful save.
+    bool draw(const std::string &compile_error, const shader_diagnostic_report & = {}, ImVec2 size = {},
+        const char *language_label = "GLSL / Slang", ImGuiWindowFlags window_flags = 0); // True after a successful save.
 private:
     struct document {
         TextEditor editor;

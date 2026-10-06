@@ -320,7 +320,7 @@ try
                 if (channel.kind == toy_input_kind::volume)
                     next.import_notes.push_back(label + ": use a horizontal volume atlas and set its slice count; Shadertoy .bin volumes need conversion.");
                 if (channel.kind == toy_input_kind::audio)
-                    next.import_notes.push_back(label + ": audio must be a local WAV; online streams and other audio formats need conversion.");
+                    next.import_notes.push_back(label + ": choose a supported local audio file (WAV, FLAC, Ogg, MP3, Opus, AAC/M4A, WebM audio, tracker modules or AC-3); online streams are not supported.");
             }
         }
     }

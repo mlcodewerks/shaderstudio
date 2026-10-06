@@ -13,7 +13,7 @@ const char *toy_pass_name(toy_pass_kind kind)
 const char *toy_input_name(toy_input_kind kind)
 {
     static const char *names[] = {"None", "Buffer A", "Buffer B", "Buffer C", "Buffer D", "Cubemap",
-                                  "Texture", "Cubemap texture (6-face strip)", "Volume (slice atlas)", "Keyboard", "Audio (WAV)",
+                                  "Texture", "Cubemap texture (6-face strip)", "Volume (slice atlas)", "Keyboard", "Audio",
                                   "Microphone", "Video / image sequence", "Camera"};
     return names[static_cast<int>(kind)];
 }

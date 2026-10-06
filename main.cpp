@@ -1,5 +1,6 @@
 #include "project.h"
 #include "preview.h"
+#include "workspace.h"
 #include "shadertoy_runtime.h"
 #include "shadertoy_download.h"
 #include "shader_source_editor.h"
@@ -120,7 +121,7 @@ namespace
                 SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
                 SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
                 SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-                window = SDL_CreateWindow("WTFweg Shader Studio", 1600, 960,
+                window = SDL_CreateWindow("WTFweg Shader Studio", 1280, 720,
                                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | (hidden ? SDL_WINDOW_HIDDEN : 0));
                 require(window != nullptr, SDL_GetError());
                 context = SDL_GL_CreateContext(window);
@@ -225,7 +226,6 @@ namespace
         void open_editor()
         {
             editor.open_preset(project.chain, status);
-            layout_editor = true;
         }
         void event(const SDL_Event &e)
         {
@@ -419,26 +419,12 @@ namespace
                     open_editor();
                 ImGui::EndMainMenuBar();
             }
-            const auto *viewport = ImGui::GetMainViewport();
-            const auto screen = viewport->WorkSize, origin = viewport->WorkPos;
-            const bool relayout = screen.x != last_screen.x || screen.y != last_screen.y ||
-                                  origin.x != last_origin.x || origin.y != last_origin.y;
-            last_screen = screen;
-            last_origin = origin;
-            layout_editor |= relayout;
-            const float width = std::max(1.f, screen.x - 30.f);
-            const float height = std::max(1.f, screen.y - 30.f);
-            const ImVec2 right(origin.x + 20.f + width * 0.29f, origin.y + 10.f);
-            const ImVec2 preview_size(width * 0.71f, height * 0.42f);
-            const ImVec2 editor_size(width * 0.71f, height * 0.58f);
+            workspace.draw(editor.is_visible());
             if (ImGui::IsKeyPressed(ImGuiKey_F5, false) && picker == picker_type::none && !pending && !download.valid())
                 save_compile();
-            if (relayout)
-            {
-                ImGui::SetNextWindowPos(ImVec2(origin.x + 10.f, origin.y + 10.f));
-                ImGui::SetNextWindowSize(ImVec2(width * 0.29f, height + 10.f));
-            }
-            if (ImGui::Begin("Shader project"))
+            ImGui::SetNextWindowPos(workspace.project_pos);
+            ImGui::SetNextWindowSize(workspace.project_size);
+            if (ImGui::Begin("Shader project", nullptr, studio_workspace::flags))
             {
                 ImGui::TextUnformatted(project.chain.name.empty() ? "Create your first shader" : project.chain.name.c_str());
                 if (!project.preset.empty())
@@ -495,15 +481,13 @@ namespace
                 ImGui::EndDisabled();
             }
             ImGui::End();
-            draw_preview(right, preview_size, relayout);
+            draw_preview();
             if (editor.is_visible())
             {
-                if (layout_editor)
-                    ImGui::SetNextWindowPos(ImVec2(right.x, right.y + preview_size.y + 10.f));
+                ImGui::SetNextWindowPos(workspace.editor_pos);
                 if (editor.draw(project.is_shadertoy ? toy_runtime.error : control.error,
-                                project.is_shadertoy ? toy_runtime.diagnostics : control.diagnostics, layout_editor ? editor_size : ImVec2{}))
+                                project.is_shadertoy ? toy_runtime.diagnostics : control.diagnostics, workspace.editor_size, "GLSL / Slang", studio_workspace::flags))
                     compile();
-                layout_editor = false;
             }
             dialogs();
         }
@@ -516,6 +500,7 @@ namespace
             save,
             pass,
             image,
+            video,
             toy_asset,
             texture
         } picker = picker_type::none;
@@ -531,12 +516,12 @@ namespace
         std::string url_input, url_key, url_directory, url_error;
         bool url_popup = false, close_url_popup = false, url_assets = true, exit_after_download = false;
         int template_index = 0, output_width = 640, output_height = 480;
-        bool new_popup = false, help = false, paused = false, original = false, force_frame = true, layout_editor = false;
+        bool new_popup = false, help = false, paused = false, original = false, force_frame = true;
         uint64_t next_frame = 0;
         uint64_t last_toy_frame = 0;
         bool preview_focused = false, mouse_drag = false;
         int asset_pass = 0, asset_channel = 0;
-        ImVec2 last_screen{}, last_origin{};
+        studio_workspace workspace;
         std::function<void()> pending;
         shader_template template_kind() const { return static_cast<shader_template>(template_index); }
         bool unsaved() const { return project.dirty || editor.has_unsaved_changes(); }
@@ -624,7 +609,6 @@ namespace
                     if (ImGui::SmallButton("Edit"))
                     {
                         editor.open(p.source, status);
-                        layout_editor = true;
                     }
                     if (i != 5)
                     {
@@ -682,8 +666,8 @@ namespace
                             {
                                 asset_pass = i;
                                 asset_channel = j;
-                                pick(picker_type::toy_asset, "Choose channel asset", c.kind == toy_input_kind::audio ? ".wav" : 
-                                    c.kind == toy_input_kind::video ? ".mp4,.webm,.mkv,.mov,.avi,.gif"
+                                pick(picker_type::toy_asset, "Choose channel asset", c.kind == toy_input_kind::audio ? ".wav,.flac,.ogg,.oga,.mp3,.opus,.aac,.m4a,.weba,.mka,.mod,.s3m,.xm,.ac3,.eac3,.ec3" : 
+                                    c.kind == toy_input_kind::video ? ".mp4,.m4v,.mov,.webm,.mkv"
                                     : ".png,.jpg,.jpeg,.bmp,.tga");
                             }
                             if (c.kind == toy_input_kind::cube_texture)
@@ -698,7 +682,7 @@ namespace
                             {
                                 edited |= ImGui::InputFloat("Frames per second", &c.fps);
                                 c.fps = std::clamp(c.fps, 1.f, 240.f);
-                                ImGui::TextWrapped("Video files use FFmpeg. Or enter a folder of zero-padded numbered images; playback loops in filename order.");
+                                ImGui::TextWrapped("MP4 / WebM video loops at its recorded frame timing. FPS is the fallback for missing timestamps and numbered image folders.");
                             }
                         }
                         if (c.kind != toy_input_kind::none)
@@ -740,7 +724,6 @@ namespace
                 if (ImGui::SmallButton("Edit"))
                 {
                     editor.open(pass.source, status);
-                    layout_editor = true;
                 }
                 ImGui::SameLine();
                 ImGui::BeginDisabled(i == 0);
@@ -850,87 +833,92 @@ namespace
             if (ImGui::Button("Apply preset options"))
                 compile();
         }
-        void draw_preview(ImVec2 position, ImVec2 size, bool relayout)
+        void draw_preview()
         {
             auto &control = video_shaders();
-            if (relayout)
+            workspace.prepare_preview();
+            if (ImGui::Begin("Live preview", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
             {
-                ImGui::SetNextWindowPos(position);
-                ImGui::SetNextWindowSize(size);
-            }
-            if (ImGui::Begin("Live preview"))
-            {
+                workspace.capture_preview();
+                workspace.begin_controls();
                 if (ImGui::Button("Load image..."))
                     pick(picker_type::image, "Load preview image", ".png,.jpg,.jpeg,.bmp,.tga");
-                ImGui::SameLine();
+                studio_workspace::next_control("Load video...", false);
+                if (ImGui::Button("Load video..."))
+                    pick(picker_type::video, "Load looping preview video", ".mp4,.m4v,.mov,.webm,.mkv");
+                studio_workspace::next_control("Test card", false);
                 if (ImGui::Button("Test card"))
                 {
                     preview.test_card();
                     force_frame = true;
                 }
-                ImGui::SameLine();
+                studio_workspace::next_control("Pause", true);
                 if (ImGui::Checkbox("Pause", &paused))
                     last_toy_frame = 0;
-                ImGui::SameLine();
+                studio_workspace::next_control("Step", false);
                 if (ImGui::Button("Step"))
                 {
                     paused = true;
                     force_frame = true;
                 }
-                ImGui::SameLine();
+                studio_workspace::next_control("Restart", false);
                 if (ImGui::Button("Restart"))
                 {
                     shader_gl_destroy();
                     toy_runtime.reset();
+                    preview.restart_video();
                     last_toy_frame = 0;
                     preview.output_texture = 0;
                     force_frame = true;
                 }
-                ImGui::SameLine();
+                studio_workspace::next_control("Original", true);
                 ImGui::Checkbox("Original", &original);
                 if (project.is_shadertoy)
                 {
                     if (ImGui::Checkbox("Play audio", &toy_runtime.sound_enabled))
                         toy_runtime.media_status.clear();
-                    ImGui::SameLine();
-                    if (ImGui::Checkbox("Enable microphone / camera", &toy_runtime.capture_enabled))
+                    studio_workspace::next_control("Microphone / camera", true);
+                    if (ImGui::Checkbox("Microphone / camera", &toy_runtime.capture_enabled))
                         toy_runtime.media_status.clear();
                     toy_runtime.set_playing(!paused);
-                    ImGui::Text("Time %.3f s | Frame %d | Click preview for keyboard input", toy_runtime.time(), toy_runtime.frame());
+                    ImGui::TextWrapped("Time %.3f s | Frame %d | Click preview for keyboard input", toy_runtime.time(), toy_runtime.frame());
                 }
-                ImGui::SetNextItemWidth(95);
-                bool resize = ImGui::InputInt("Width", &output_width, 0);
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(95);
-                resize |= ImGui::InputInt("Height", &output_height, 0);
-                output_width = std::clamp(output_width, 16, 4096);
-                output_height = std::clamp(output_height, 16, 4096);
-                force_frame |= resize;
+                ImGui::Text("Resolution %d x %d", output_width, output_height);
+                if (!toy_runtime.media_status.empty())
+                    ImGui::TextWrapped("%s", toy_runtime.media_status.c_str());
+                if (!(project.is_shadertoy ? toy_runtime.error : control.error).empty())
+                    ImGui::TextWrapped("Compilation failed: the previous working preview is retained."\ 
+                        "See the source editor for diagnostics.");
+                workspace.end_controls();
+                const auto available = ImGui::GetContentRegionAvail();
+                workspace.measure_preview(ImGui::GetWindowSize(), available);
+                const int new_width = std::clamp(static_cast<int>(available.x), 16, 4096);
+                const int new_height = std::clamp(static_cast<int>(available.y), 16, 4096);
+                force_frame |= new_width != output_width || new_height != output_height;
+                output_width = new_width;
+                output_height = new_height;
                 const auto now = SDL_GetTicksNS();
                 if (force_frame || (!paused && now >= next_frame))
                 {
                     if (!control.settings.chains.empty())
                         control.settings.chains[0].values = project.chain.values;
                     control.source_aspect = static_cast<float>(preview.width) / preview.height;
+                    float delta = paused || !last_toy_frame ? 1.f / 60 :
+                        std::clamp(static_cast<float>(now - last_toy_frame) / 1e9f, 0.f, 0.25f);
+                    preview.advance_video(delta, status);
                     if (project.is_shadertoy)
                     {
-                        float delta = paused || !last_toy_frame ? 1.f / 60 : 
-                        std::clamp(static_cast<float>(now - last_toy_frame) / 1e9f, 0.f, 0.25f);
                         last_fbo = toy_runtime.render(output_width, output_height, delta);
                         preview.output_texture = toy_runtime.texture;
-                        last_toy_frame = now;
                     }
                     else
                         last_fbo = preview.render(output_width, output_height);
                     force_frame = false;
+                    last_toy_frame = now;
                     next_frame = now + 1000000000 / 60;
                 }
-                if (!(project.is_shadertoy ? toy_runtime.error : control.error).empty())
-                    ImGui::TextUnformatted("Compilation failed: the previous working preview is retained."\ 
-                        "See the source editor for diagnostics.");
                 const float aspect = original ? static_cast<float>(preview.width) / preview.height : 
                 static_cast<float>(output_width) / output_height;
-                auto available = ImGui::GetContentRegionAvail();
                 float w = std::max(1.f, std::min(available.x, available.y * aspect));
                 auto texture = original || !preview.output_texture ? preview.input_texture : preview.output_texture;
                 auto top_left = ImGui::GetCursorScreenPos();
@@ -954,8 +942,7 @@ namespace
                                       std::clamp(1 - (pos.y - top_left.y) / (w / aspect), 0.f, 1.f) * output_height, down, clicked);
                     if (!down)
                         mouse_drag = false;
-                    if (!toy_runtime.media_status.empty())
-                        ImGui::TextWrapped("%s", toy_runtime.media_status.c_str());
+
                 }
             }
             ImGui::End();
@@ -1095,6 +1082,11 @@ namespace
                         project.chain.passes.push_back({path, true, {}});
                         changed();
                         open_editor();
+                    }
+                    else if (picker == picker_type::video && preview.load_video(path, status))
+                    {
+                        last_toy_frame = 0;
+                        force_frame = true;
                     }
                     else if (picker == picker_type::image && preview.load_image(path, status))
                         force_frame = true;

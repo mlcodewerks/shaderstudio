@@ -283,29 +283,6 @@ bool shader_export(const std::filesystem::path &path, const shader_chain_config 
         return false;
     }
 }
-bool shader_save_source(const std::filesystem::path &path, const std::string &source, std::string &error)
-{
-    try
-    {
-        if (source.size() > 4 * 1024 * 1024 || source.find('\0') != source.npos)
-            throw std::runtime_error("Shader source is too large or contains NUL bytes.");
-        auto tmp = path;
-        tmp += ".tmp";
-        std::ofstream out(tmp, std::ios::binary);
-        out.write(source.data(), static_cast<std::streamsize>(source.size()));
-        out.close();
-        if (!out)
-            throw std::runtime_error("Cannot write shader source.");
-        replace_file(tmp, path);
-        error.clear();
-        return true;
-    }
-    catch (const std::exception &e)
-    {
-        error = e.what();
-        return false;
-    }
-}
 bool shader_create_preset(const std::filesystem::path &directory, const std::string &name,
                           const std::string &source, shader_chain_config &result, std::string &error)
 {
@@ -463,13 +440,11 @@ void shader_controller::init()
     directory = std::filesystem::u8path(base);
     auto &api = librashader();
     api.load(directory);
-    if (!api.gl_available && !api.vk_available)
-        return;
     auto path = directory / "wtfweg.shaders";
     std::error_code ec;
     if (std::filesystem::exists(path, ec) && shader_load(path, settings, error))
         for (auto &chain : settings.chains)
-            if (!chain.passes.empty())
+            if ((api.gl_available || api.vk_available) && !chain.passes.empty())
                 inspect(chain);
 }
 bool shader_controller::inspect(shader_chain_config &chain)

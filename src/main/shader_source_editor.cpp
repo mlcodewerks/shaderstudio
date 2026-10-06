@@ -100,6 +100,9 @@ bool shader_source_editor::load(const std::filesystem::path &path, std::filesyst
             doc.editor.SetTabSize(4);
             doc.editor.SetInsertSpacesOnTabs(false);
             doc.editor.SetShowWhitespacesEnabled(false);
+            // Preserve shader text delivered in batches by SDL or libretro.
+            // Pair completion otherwise inserts extra closing braces/parentheses.
+            doc.editor.SetCompletePairedGlyphs(false);
             doc.editor.SetText(text);
             doc.saved_text = editor_text(doc.editor);
         }
@@ -181,7 +184,8 @@ bool shader_source_editor::save_all(std::string &error)
     return true;
 }
 
-bool shader_source_editor::draw(const std::string &compile_error, const shader_diagnostic_report &diagnostics, ImVec2 size)
+bool shader_source_editor::draw(const std::string &compile_error, const shader_diagnostic_report &diagnostics, ImVec2 size,
+                                const char *language_label, ImGuiWindowFlags window_flags)
 {
     if (!visible)
         return false;
@@ -193,9 +197,11 @@ bool shader_source_editor::draw(const std::string &compile_error, const shader_d
     if (focus)
         ImGui::SetNextWindowFocus();
     // Closing the window hides it; documents remain available from Edit source.
-    if (ImGui::Begin("Shader source", &visible))
+    if (ImGui::Begin("Shader source", &visible, window_flags))
     {
-        ImGui::TextWrapped("Save writes the source file used by every pass referencing it and reloads the shader stack. Failed compilation keeps the previous working shaders.");
+        const bool compact = ImGui::GetContentRegionAvail().y < 200.f;
+        if (!compact)
+            ImGui::TextWrapped("Save writes the source file used by every pass referencing it and reloads the shader stack. Failed compilation keeps the previous working shaders.");
         if (!open_error.empty())
             ImGui::TextWrapped("%s", open_error.c_str());
         if (!compile_error.empty())
@@ -277,61 +283,69 @@ bool shader_source_editor::draw(const std::string &compile_error, const shader_d
                 if (active)
                 {
                     ImGui::PushID(id.c_str());
-                    ImGui::TextWrapped("%s", id.c_str());
+                    if (!compact) ImGui::TextWrapped("%s", id.c_str());
                     bool shortcut = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
                                     ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false);
-                    if (ImGui::Button("Save source and reload") || shortcut)
-                        saved |= save(path, doc);
-                    ImGui::SameLine();
-                    ImGui::BeginDisabled(!doc.editor.CanUndo());
-                    if (ImGui::Button("Undo"))
+                    if (compact && shortcut) saved |= save(path, doc);
+                    if (!compact)
                     {
-                        doc.editor.Undo();
-                        doc.modified = editor_text(doc.editor) != doc.saved_text;
-                        doc.diagnostic_revision = UINT64_MAX;
-                    }
-                    ImGui::EndDisabled();
-                    ImGui::SameLine();
-                    ImGui::BeginDisabled(!doc.editor.CanRedo());
-                    if (ImGui::Button("Redo"))
-                    {
-                        doc.editor.Redo();
-                        doc.modified = editor_text(doc.editor) != doc.saved_text;
-                        doc.diagnostic_revision = UINT64_MAX;
-                    }
-                    ImGui::EndDisabled();
-                    ImGui::SameLine();
-                    ImGui::TextUnformatted(doc.modified ? "Unsaved changes" : "Saved");
-                    if (doc.diagnostic_count)
-                    {
-                        ImGui::Text("%zu compiler diagnostics", doc.diagnostic_count);
+                        if (ImGui::Button("Save source and reload") || shortcut)
+                            saved |= save(path, doc);
                         ImGui::SameLine();
-                        if (ImGui::SmallButton("Next error"))
+                        ImGui::BeginDisabled(!doc.editor.CanUndo());
+                        if (ImGui::Button("Undo"))
                         {
-                            size_t next = SIZE_MAX, first = SIZE_MAX;
-                            const auto cursor = doc.editor.GetMainCursorPosition().line;
-                            for (const auto &entry : diagnostics.entries)
-                                if (entry.source == path && entry.line)
-                                {
-                                    first = std::min(first, entry.line - 1);
-                                    if (entry.line - 1 > cursor)
-                                        next = std::min(next, entry.line - 1);
-                                }
-                            if (next == SIZE_MAX)
-                                next = first;
-                            if (next != SIZE_MAX)
+                            doc.editor.Undo();
+                            doc.modified = editor_text(doc.editor) != doc.saved_text;
+                            doc.diagnostic_revision = UINT64_MAX;
+                        }
+                        ImGui::EndDisabled();
+                        ImGui::SameLine();
+                        ImGui::BeginDisabled(!doc.editor.CanRedo());
+                        if (ImGui::Button("Redo"))
+                        {
+                            doc.editor.Redo();
+                            doc.modified = editor_text(doc.editor) != doc.saved_text;
+                            doc.diagnostic_revision = UINT64_MAX;
+                        }
+                        ImGui::EndDisabled();
+                        ImGui::SameLine();
+                        ImGui::TextUnformatted(doc.modified ? "Unsaved changes" : "Saved");
+                        if (doc.diagnostic_count)
+                        {
+                            ImGui::Text("%zu compiler diagnostics", doc.diagnostic_count);
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton("Next error"))
                             {
-                                doc.editor.SetCursor({next, 0});
-                                doc.editor.ScrollToLine(next);
-                                doc.editor.SetFocus();
+                                size_t next = SIZE_MAX, first = SIZE_MAX;
+                                const auto cursor = doc.editor.GetMainCursorPosition().line;
+                                for (const auto &entry : diagnostics.entries)
+                                    if (entry.source == path && entry.line)
+                                    {
+                                        first = std::min(first, entry.line - 1);
+                                        if (entry.line - 1 > cursor)
+                                            next = std::min(next, entry.line - 1);
+                                    }
+                                if (next == SIZE_MAX)
+                                    next = first;
+                                if (next != SIZE_MAX)
+                                {
+                                    doc.editor.SetCursor({next, 0});
+                                    doc.editor.ScrollToLine(next);
+                                    doc.editor.SetFocus();
+                                }
                             }
                         }
+                        if (!doc.status.empty())
+                            ImGui::TextWrapped("%s", doc.status.c_str());
+                        ImGui::Text("%s    Ctrl+S: save    Ctrl+F: find    Ctrl+H: replace", language_label);
                     }
-                    if (!doc.status.empty())
-                        ImGui::TextWrapped("%s", doc.status.c_str());
-                    ImGui::TextUnformatted("GLSL / Slang    Ctrl+S: save    Ctrl+F: find    Ctrl+H: replace");
                     if (focus && selected == path)
+                    {
                         doc.editor.SetFocus();
+                        focus = false;
+                        selected.clear();
+                    }
                     ImGui::PushFont(editor_font, ImGui::GetFontSize());
                     // Let the dialog's translucent background show through the editor.
                     ImGui::SetNextWindowBgAlpha(0.0f);
@@ -347,8 +361,8 @@ bool shader_source_editor::draw(const std::string &compile_error, const shader_d
             }
             ImGui::EndTabBar();
         }
-        selected.clear();
-        focus = false;
+        // A newly created tab may not become active until the next frame.
+        // Keep its selection/focus request until its editor has been rendered.
         if (!closing.empty())
             ImGui::OpenPopup("Unsaved shader changes");
         if (ImGui::BeginPopupModal("Unsaved shader changes", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
